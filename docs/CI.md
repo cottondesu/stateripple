@@ -54,7 +54,7 @@ To update an action: resolve the new release tag to its commit (`gh api repos/ac
 | 1.26, 1.27 | Supported Go (Go supports the two latest releases). Security-supported. |
 | 1.23 | The minimum version StateRipple builds and tests with (`go 1.23` in `go.mod`). Out of Go's security support: it is a backward-compatibility check, not a recommendation to run on it. |
 
-All three run the real toolchain from `actions/setup-go`, which resolves the newest patch of the minor version (for example 1.27.2). The job prints `go version` and `go env GOVERSION GOTOOLCHAIN` and fails if the toolchain is not the requested minor version or `GOTOOLCHAIN` is not `local`. If Go 1.23 fails to build or test, that is a failure of the minimum-version promise and is reported as such; tests are never skipped to make it green.
+All three run the real toolchain from `actions/setup-go`, which resolves a patch release of the requested minor version — 1.23.12, 1.26.8 and 1.27.2 in the recorded hosted runs (the local measurements in [VALIDATION.md](VALIDATION.md) used 1.26.9, so the resolved patch is not always the newest). The workflow pins only the minor version and does not guarantee the latest patch. The job prints `go version` and `go env GOVERSION GOTOOLCHAIN` and fails if the toolchain is not the requested minor version or `GOTOOLCHAIN` is not `local`. If Go 1.23 fails to build or test, that is a failure of the minimum-version promise and is reported as such; tests are never skipped to make it green.
 
 ## Git 2.45 or later
 
@@ -108,7 +108,7 @@ Test results were 504 passes on macOS and 501 on Linux (the three differences ar
 
 The adapters package dominates (it starts many Git and Go processes). `-timeout=5m` per package had a wide margin in every local run above; if hosted runners prove slower, raise the timeout in the workflow rather than skipping tests.
 
-The first hosted runs (2026-10-10, run IDs in the status table above) were faster than every local row: the `push` run took 91 s wall (compat 37–44 s per Go version, `enhanced` 79 s, `linux-binary` 41 s, `ci-ok` 4 s), the manual run with the long shuffle 120 s wall (its `long-shuffle` job 116 s) and the two `pull_request` runs 80 s and 93 s wall (compat 37–46 s, `enhanced` 70–83 s, `linux-binary` 21–24 s). The suite has no third-party module to download, so the offline policy costs nothing on the runner. Each compat job, including the build and the full suite, finished in under a minute, so the per-package `-timeout=5m` kept the same wide margin as locally.
+The first hosted runs (2026-10-10, run IDs in the status table above) were faster than every local row: the `push` run took 91 s wall (compat 37–44 s per Go version, `enhanced` 79 s, `linux-binary` 21 s, `ci-ok` 4 s), the manual run with the long shuffle 120 s wall (its `long-shuffle` job 116 s) and the two `pull_request` runs 80 s and 93 s wall (compat 37–46 s, `enhanced` 70–83 s, `linux-binary` 21–24 s). The suite has no third-party module to download, so the offline policy costs nothing on the runner. Each compat job, including the build and the full suite, finished in under a minute, so the per-package `-timeout=5m` kept the same wide margin as locally.
 
 ### Running the long shuffle later
 
@@ -157,12 +157,12 @@ CI executes the test suite on Linux (x86-64 hosted runners) only. Cross-compilat
 
 All of the following are required; a green CI run alone is not a release decision.
 
-1. Done (2026-10-10): the first push ran the `CI` workflow on `main` and every job in `compat` (1.23, 1.26, 1.27), `enhanced`, `linux-binary` and `ci-ok` is green — [run 38026796484](https://github.com/cottondesu/stateripple/actions/runs/38026796484). Timings are recorded under [Expected time](#expected-time); the VALIDATION.md entry is still to be added.
+1. Done (2026-10-10): the first push ran the `CI` workflow on `main` and every job in `compat` (1.23, 1.26, 1.27), `enhanced`, `linux-binary` and `ci-ok` is green — [run 38026796484](https://github.com/cottondesu/stateripple/actions/runs/38026796484). Timings are recorded under [Expected time](#expected-time), and the hosted results are recorded in [VALIDATION.md](VALIDATION.md#current-record-github-actions-hosted-runs-2026-10-10) under "Current record: GitHub Actions hosted runs".
 2. Done (2026-10-10): the `long_shuffle` manual run is green — [run 38027059887](https://github.com/cottondesu/stateripple/actions/runs/38027059887).
 3. Done (2026-10-10): the runner printed Git 2.55.0 on both runs and the gate passed.
-4. Done (2026-10-10): the hosted runs were faster than the local expectations and nothing was skipped; see [Expected time](#expected-time). VALIDATION.md still records only local measurements.
+4. Done (2026-10-10): the hosted runs were faster than the local expectations and nothing was skipped; see [Expected time](#expected-time). Hosted CI results are recorded in [VALIDATION.md](VALIDATION.md#current-record-github-actions-hosted-runs-2026-10-10) under "Current record: GitHub Actions hosted runs".
 5. Done (2026-10-10): pull request runs from a branch are green — [run 38027821273](https://github.com/cottondesu/stateripple/actions/runs/38027821273) and [run 38028313271](https://github.com/cottondesu/stateripple/actions/runs/38028313271), both event `pull_request`, PR #1 (`docs/verify-pr-ci-trigger` → `main`); every required job passed and `long-shuffle` skipped as designed in both. Concurrency cancellation was not exercised: the two runs executed sequentially, so no in-progress run was superseded.
-6. Decide the platform statement for the release notes: Linux and macOS arm64 verified; Windows, other BSDs and Linux arm64 on hosted runners not run in CI.
+6. Done (2026-10-10): the platform statement for the release notes is fixed — Linux amd64: execution-verified on GitHub Actions; Linux arm64: execution-verified in a local Docker environment; macOS arm64: execution-verified locally; Windows, macOS Intel, the BSDs and illumos: not execution-verified. Cross-compilation success is never presented as execution verification.
 7. Release itself (tag, GitHub Release) is done by hand after the above and is not automated.
 
 ## Not verified yet

@@ -42,7 +42,7 @@ Snapshotは1つのJSONファイルです。
 | 終了コード | 意味 |
 |---|---|
 | 0 | 完了した結果（`status: complete`） |
-| 1 | 入力・使用法・設定・実行・出力のエラー。Reportなし |
+| 1 | 入力・使用法・設定・実行・出力のエラー。終了コード1は出力の不存在を保証しません。stdoutに部分出力が残る場合や、公開後のcleanup失敗で完成済みの`--out`ファイルが残る場合があります |
 | 2 | 不完全な結果（`status: incomplete`）。固定点を確認せずに世代上限へ達した場合、またはAdapterの証拠が不完全な場合 |
 
 ## 伝播ルール：RiskPropagationV1
@@ -132,7 +132,7 @@ JSONとTextは同じ出力パス検査を使用します。既存directoryは末
 
 静的importだけでは全実行時依存を捕捉できません。動的ロード、生成コード、異なるbuild tags、workspace、ネストしたモジュール、ローカルreplaceには保守的な制約があります。全プラットフォームではなく現在のターゲット環境と標準ビルド条件を解析します。削除ファイルや消えたテストの所有先を特定できない場合はincompleteです。テスト対象0件は検証不要の証明ではありません。他のソフトウェアより品質が高いという主張は行いません。
 
-解析中のcheckoutと出力directoryは安定した信頼できる状態を保ってください。解析検査はfilesystem transactionではありません。Unix入力はnonblockingでidentityを再確認し、他環境には事前検査/openの競合が残ります。出力の親directoryを解決し公開前にidentityを再検査しますが、悪意ある親directoryや一時名の差し替えをportable path APIだけでは完全に排除しません。directoryと公開entryが維持される条件では同時writerの成功は高々1件です。公開後のcleanup失敗は「公開済み」と明示してexit 1になります。exit 1でも出力が存在する場合があります。cleanup失敗やcrashで一時hardlinkが残る可能性があり、directory fsync/crash durabilityは保証しません。macOS出力とLinuxコンテナのtmpfs/overlay出力について、競合とmetadata保持を含め実測しました。Windows実行時は未検証です。Go 1.23.12は、macOS arm64のローカルとLinux arm64コンテナで、ビルドと全テストに成功しました。GitHub Actionsは未実行です。クロスコンパイルとLinuxの検証範囲は[VALIDATION.md](docs/VALIDATION.md)で区別します。
+解析中のcheckoutと出力directoryは安定した信頼できる状態を保ってください。解析検査はfilesystem transactionではありません。Unix入力はnonblockingでidentityを再確認し、他環境には事前検査/openの競合が残ります。出力の親directoryを解決し公開前にidentityを再検査しますが、悪意ある親directoryや一時名の差し替えをportable path APIだけでは完全に排除しません。directoryと公開entryが維持される条件では同時writerの成功は高々1件です。公開後のcleanup失敗は「公開済み」と明示してexit 1になります。exit 1でも出力が存在する場合があります。cleanup失敗やcrashで一時hardlinkが残る可能性があり、directory fsync/crash durabilityは保証しません。macOS出力とLinuxコンテナのtmpfs/overlay出力について、競合とmetadata保持を含め実測しました。Windows実行時は未検証です。Go 1.23.12は、macOS arm64のローカルとLinux arm64コンテナで、ビルドと全テストに成功しました。GitHub ActionsのLinux amd64ランナーでも全テストに成功しています。クロスコンパイルとLinuxの検証範囲は[VALIDATION.md](docs/VALIDATION.md)で区別します。
 
 ## 開発
 
@@ -154,7 +154,7 @@ git status --short   # 未追跡ファイルも確認する（HEADがまだな�
 - **Git。** `analyze`を実行するもの（Gitを使うテストを含む）にはGit 2.45以上が必要です。CIは最初のステップで確認し、足りなければ明確に失敗します。versionは数値で比較し、skipはしません。
 - **オフライン。** `GOPROXY=off`や`GIT_NO_LAZY_FETCH=1`などはGo/Gitの取得制御であり、ネットワーク遮断ではありません。ビルド済みバイナリは、空のLinux network namespaceの中で、GitもGoも見えない状態にして`simulate`、`help`、`version`、Goldenのhash、終了コードを検証します。実際の`analyze`は別のnamespaceで実行します。
 - **実行テストとクロスコンパイル。** CIがテストを実行するのはLinuxだけです。他OS向けのビルドは、コンパイルできることの確認であり動作の確認ではありません。macOS、Windows、BSDでの実行はCIの対象外です。
-- **状態。** workflowはローカルで検証しただけで、まだGitHub Actionsでは実行していません。Release前に、`main`での初回実行、手動のlong shuffle、docs/CI.mdの確認事項が必要です。
+- **状態。** workflowは、`main`へのpush、手動`workflow_dispatch`（long shuffleを含む）、`pull_request`の3経路すべてでGitHub Actions上で成功しています。証拠とRelease前チェックリストは[docs/CI.md](docs/CI.md)と[docs/VALIDATION.md](docs/VALIDATION.md)にあります。PR単位のconcurrency取消しは未観測です（追い越されたRunはありません）。
 
 [設計](docs/ARCHITECTURE.md)、[スキーマ](docs/SCHEMA.md)、[検証証拠](docs/VALIDATION.md)を参照してください。Mandalaは開発上の宣言済み必須項目の追跡にだけ使用します。StateRipple本体の依存関係やドメインモデルには含めません。
 
