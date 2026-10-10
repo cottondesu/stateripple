@@ -1,0 +1,24 @@
+# Implementation contract
+
+StateRipple v0.1.0 (module `github.com/cottondesu/stateripple`, formerly RiskLife) uses only the Go standard library. No commits or publication are authorized. Mandala tracks core and oss, required remediation leaves under adapters, cli and validation, and the generic and naming groups.
+
+Shared Go API (internal):
+
+* `graph.Node{ID string, Kind string}`, `graph.Edge{From, To, Kind string; Attenuation int}`; `graph.Normalize(nodes []Node, edges []Edge) ([]Node, []Edge, error)`.
+* `snapshot.Seed{ID string, Risk int, Reason string}`; `snapshot.Snapshot{SchemaVersion int, Ruleset string, MaxGenerations int, Nodes []graph.Node, Edges []graph.Edge, Seeds []Seed}` with snake_case JSON. `snapshot.Normalize(Snapshot) (Snapshot,error)`, `snapshot.Read(io.Reader) (Snapshot,error)`, `snapshot.Hash(Snapshot) (string,error)`.
+* `report.Cause{Source string, Edge *graph.Edge, Reason string}`. `report.Cell{ID,Kind string; Risk int; Seeds []snapshot.Seed; FirstActiveGeneration *int; Causes []Cause}`. `report.Change{ID string; Before,After int; Causes []Cause}`. `report.Wave{Generation int; Changes []Change}`. `report.TestTarget{ID string; Risk int}`.
+* `report.BuildContext{GoVersion,GOOS,GOARCH,CGOEnabled,Module string; BuildTags []string; ToolTags []string; ReleaseTags []string}` snake_case JSON.
+* `report.FileChange{Path,Status,Classification string}`.
+* `report.Report{SchemaVersion int; Ruleset,Status,InputSHA256 string; GenerationCount int; Cells []Cell; TestTargets []TestTarget; Waves []Wave; UnknownChanges,Warnings []string; Changes []FileChange; BuildContext *BuildContext; StopReason string}`.
+* `report.JSON(Report) ([]byte,error)` compact ordered JSON plus one newline; `report.Text(Report) string`.
+* `rules/risk.Run(snapshot.Snapshot) (report.Report,error)`.
+* `adapters.Analyze(context.Context, root string, base string) (snapshot.Snapshot, Metadata, error)` where `Metadata{Changes []report.FileChange; UnknownChanges,Warnings []string; BuildContext *report.BuildContext; Incomplete bool}`. Adapter execution errors without useful input return error; dependency/unsupported-analysis errors with known graph return incomplete metadata. Caller merges metadata into risk report.
+* `cli.Run(context.Context, args []string, stdout,stderr io.Writer) int`; executable `cmd/stateripple` calls this with signal context.
+
+Graph validates structure generically: IDs and kinds are nonempty valid strings of at most 4,096 bytes (kinds are free-form labels), endpoints must exist, and attenuation is an explicit 0..3 (`graph.MaxAttenuation`). Edge ordering is from,to,kind,attenuation. Nodes unique (duplicate IDs rejected); identical edges merged; contradictory endpoint/kind/attenuation edges rejected. The Go vocabulary is checked only by `adapters.validateGoProfile` on analyze-collected graphs. Same-package test imports are omitted in favor of own_test.
+
+Limits: input 16 MiB; 20,000 nodes; 200,000 edges; 100,000 seeds; string length 4,096 bytes; updates 1..1,024, default 16 when omitted. Generic engine controls synchronous stepping using comparable state; risk rules and explanations live outside it. Generation count counts updates including final no-change convergence check; waves exclude no-change checks and include initial nonzero seeds at generation 0. Final causes are all positive seed/incoming-edge causes producing the final maximum, sorted, even if equal support arrives later. History includes causes present at each actual increase.
+
+Go analysis reads HEAD with clean-worktree checks and the centralized child-only offline environment described in ARCHITECTURE.md. Use go list -e -json -deps -test -mod=readonly ./... to inspect dependency/test errors; synthetic test variants supply error evidence but not graph nodes. Build context and Git metadata are excluded from engine hash. Deleted/ignored Go sources and removed test owners must be accounted for or incomplete. Unsupported workspace, nested modules, reachable directory replacements and parent custom GOFLAGS/GOEXPERIMENT are reported conservatively. Unused replace directives alone do not cause incomplete; cached versioned remote replacements are supported. --out creates new files only through fully written/synced/closed 0600 temporary files and exclusive hardlink publication. No runtime Mandala dependency is introduced.
+
+Remediation adds raw HEAD byte/mode verification before/after collection, raw Git mode diffs forcing gitlink visibility, shared native-input enumeration, and version-metadata replacement classification. CLI regular-file opening and atomic output share no runtime Mandala dependency. Text and stderr diagnostics escape untrusted control characters; JSON/schema/risk arithmetic and generic engine responsibilities remain unchanged. See ARCHITECTURE.md and VALIDATION.md for limits and observed evidence.

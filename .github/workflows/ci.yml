@@ -1,0 +1,297 @@
+name: CI
+
+# Verification only. Nothing here publishes, tags, releases or writes to the
+# repository: the token is read-only, no secret is used and no third-party
+# action is involved.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      long_shuffle:
+        description: "Also run the long shuffle suite (-shuffle=on -count=10, expect 20-40 minutes)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    # `bash` here means `bash --noprofile --norc -eo pipefail {0}`.
+    shell: bash
+
+env:
+  # Never let the go command switch to, or download, another toolchain. The
+  # toolchain is chosen by setup-go below (CI preparation, not StateRipple).
+  GOTOOLCHAIN: local
+
+jobs:
+  # Minimum, supported and current Go on Linux. Go 1.23 is the lowest version
+  # StateRipple claims; it is out of security support and is built and tested
+  # here only to prove backward compatibility.
+  compat:
+    name: Go ${{ matrix.go }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.23", "1.26", "1.27"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ matrix.go }}
+          cache: false
+
+      - name: Toolchain versions
+        env:
+          WANT_GO: ${{ matrix.go }}
+        run: |
+          go version
+          go env GOVERSION GOTOOLCHAIN GOFLAGS GOOS GOARCH
+          got=$(go env GOVERSION)
+          case "$got" in
+            "go$WANT_GO" | "go$WANT_GO".*) ;;
+            *) echo "expected Go $WANT_GO.x, the runner has $got" >&2; exit 1 ;;
+          esac
+          test "$(go env GOTOOLCHAIN)" = local
+          uname -srm
+
+      - name: Git 2.45 or later (version gate)
+        run: scripts/ci/require-git.sh
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt would change:" >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Build the CLI
+        run: |
+          go build -trimpath -o "$RUNNER_TEMP/stateripple" ./cmd/stateripple
+          test "$("$RUNNER_TEMP/stateripple" version)" = "stateripple v0.1.0"
+
+      - name: go test
+        run: scripts/ci/gotest.sh "compat-${{ matrix.go }}" -count=1 -timeout=5m ./...
+
+  # Go 1.27 with the strict offline policy, the race detector, shuffled order and
+  # explicit, named regression groups. The strict variables are acquisition
+  # policy for Go and Git, not network isolation (see linux-binary for that).
+  enhanced:
+    name: Enhanced validation (Go 1.27, strict environment)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GOPROXY: "off"
+      GOSUMDB: "off"
+      GOWORK: "off"
+      GIT_NO_LAZY_FETCH: "1"
+      GIT_OPTIONAL_LOCKS: "0"
+      GIT_TERMINAL_PROMPT: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27"
+          cache: false
+
+      - name: Toolchain and environment
+        run: |
+          go version
+          go env GOVERSION GOTOOLCHAIN GOPROXY GOSUMDB GOWORK GOFLAGS
+          env | grep -E '^(GO(TOOLCHAIN|PROXY|SUMDB|WORK|FLAGS|EXPERIMENT)|GIT_[A-Z_]+)=' | sort
+          test "$(go env GOTOOLCHAIN)" = local
+          test "$(go env GOPROXY)" = off
+
+      - name: Git 2.45 or later (version gate)
+        run: scripts/ci/require-git.sh
+
+      - name: Race detector
+        run: scripts/ci/gotest.sh race -race -count=1 -timeout=5m ./...
+
+      - name: Shuffled order, twice
+        run: scripts/ci/gotest.sh shuffle -shuffle=on -count=2 -timeout=10m ./...
+
+      # The groups below re-run named tests and fail if any of them is missing,
+      # skipped or failing, so a rename or a silent skip cannot turn them green.
+      - name: Generic graph regression
+        env:
+          GOTEST_ONLY_REQUIRED: "1"
+          REQUIRE_TESTS: >-
+            TestGenericGraphScenarios TestGenericRejectsInvalidAttenuation
+            TestEqualRiskSourcesListEveryCause TestZeroAttenuationCycleCauses
+            TestZeroAttenuationChainCompletesOrStopsAtLimit TestNonSoftwareSupplyChain
+            TestGenericMatchesReferenceWhenRandomGraphs TestGenericLargeSparseGraph
+            TestGenericDeterminismWhenInputOrderChanges TestNormalizeAcceptsGenericVocabulary
+            TestIncompleteWhenUpdateLimitReached
+        run: scripts/ci/gotest.sh generic-graph -count=1 -timeout=5m ./...
+
+      - name: Snapshot golden and hash
+        env:
+          GOTEST_ONLY_REQUIRED: "1"
+          REQUIRE_TESTS: >-
+            TestChainGoldenWhenSnapshotLoaded TestJSONGoldenEmptyReport
+            TestSimulateGoldenJSON TestHashWhenDefaultsNormalized
+            TestDeterminismWhenInputOrderChanges TestDeterminismWhenRunRepeats
+        run: scripts/ci/gotest.sh snapshot-golden -count=1 -timeout=5m ./...
+
+      - name: Git-free acceptance
+        env:
+          GOTEST_ONLY_REQUIRED: "1"
+          REQUIRE_TESTS: >-
+            TestGitFreeAcceptance TestTextOmitsSoftwareSectionsForGenericSimulation TestVersion
+        run: scripts/ci/gotest.sh git-free -count=1 -timeout=5m ./...
+
+      - name: Offline security, Git version gate, HEAD integrity, partial clone
+        env:
+          GOTEST_ONLY_REQUIRED: "1"
+          REQUIRE_TESTS: >-
+            TestGitMissingBlobNeverFetches TestGitChildrenRejectPromptAndOverrideInheritedEnvironment
+            TestAnalyzeOfflineRejectsInheritedPrivateVCS TestGoEnvironmentOverridesInheritedPolicyWithoutDuplicates
+            TestGoCommandIgnoresSavedEnvironmentAndInjectedFlags TestAnalyzeRejectsUnsupportedGitBeforeGoCollection
+            TestOfflineEnvironment TestAnalyzeReportsInheritedGoPolicy
+            TestInheritedGoPolicyClearedBeforeTests TestAnalyzeRejectsHiddenHeadMismatch
+            TestHeadVerificationAcrossReadBufferBoundaries
+        run: scripts/ci/gotest.sh offline-security -count=1 -timeout=5m ./...
+
+      - name: Output safety and No-Clobber
+        env:
+          GOTEST_ONLY_REQUIRED: "1"
+          REQUIRE_TESTS: >-
+            TestExecutableRejectsDirectoryOutputSpellings TestExecutableResolvesOutputParentBeforeDotDot
+            TestExecutableRejectsOutputSymlinkWithoutBlocking
+            TestExecutableCreatesNewOutputWithPrivatePermissionsUnderRestrictiveUmask
+            TestExecutableConcurrentWritersPublishExactlyOnce
+            TestSimulateRejectsExistingOutputAndPreservesIdentity TestSimulateRejectsOutputThatAliasesInput
+            TestSimulateRejectsInputSymlinkAliasAsOutput TestSimulateRejectsDirectoryAsOutput
+            TestSimulateRejectsMissingOutputDirectory TestSimulateRejectsOutputSymlinkWithoutChangingTarget
+            TestReportFailureStagesNeverPublishPartialOutput TestPathDiagnosticsEscapeHostileFileNames
+        run: scripts/ci/gotest.sh output-safety -count=1 -timeout=5m ./...
+
+  # The built binary, outside `go test`: Git/Go-free simulate, canonical bytes and
+  # hashes, exit codes and output safety inside an empty network namespace, then
+  # a real `analyze` (Git and Go present) inside another one.
+  linux-binary:
+    name: Linux binary (offline, Git-free and analyze)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GOPROXY: "off"
+      GOSUMDB: "off"
+      GOWORK: "off"
+      GIT_NO_LAZY_FETCH: "1"
+      GIT_OPTIONAL_LOCKS: "0"
+      GIT_TERMINAL_PROMPT: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27"
+          cache: false
+
+      - name: Toolchain versions
+        run: |
+          go version
+          uname -srm
+          sudo -n true
+          command -v unshare setpriv
+
+      - name: Git 2.45 or later (version gate and its self-test)
+        run: |
+          scripts/ci/require-git.sh
+          scripts/ci/test-require-git.sh
+
+      - name: Build a static Linux binary
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/bin/stateripple" ./cmd/stateripple
+          sha256sum "$RUNNER_TEMP/bin/stateripple"
+          go version -m "$RUNNER_TEMP/bin/stateripple"
+
+      - name: Git-free and offline acceptance (empty network namespace, no Git or Go for the binary)
+        run: >-
+          scripts/ci/in-netns.sh bash scripts/ci/binary-acceptance.sh
+          "$RUNNER_TEMP/bin/stateripple" "$PWD" --expect-no-network
+
+      - name: Real analyze acceptance (Git and Go present, empty network namespace)
+        run: >-
+          scripts/ci/in-netns.sh bash scripts/ci/analyze-acceptance.sh
+          "$RUNNER_TEMP/bin/stateripple"
+
+  # Only on request: workflow_dispatch with the long_shuffle input. One adapters
+  # run takes roughly a minute on a laptop, so -count=10 needs about 10 minutes
+  # there; the limits below leave room for a slower runner.
+  long-shuffle:
+    name: Long shuffle (manual)
+    if: github.event_name == 'workflow_dispatch' && inputs.long_shuffle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOPROXY: "off"
+      GOSUMDB: "off"
+      GOWORK: "off"
+      GIT_NO_LAZY_FETCH: "1"
+      GIT_OPTIONAL_LOCKS: "0"
+      GIT_TERMINAL_PROMPT: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27"
+          cache: false
+
+      - name: Toolchain and Git versions
+        run: |
+          go version
+          scripts/ci/require-git.sh
+
+      - name: Shuffled order, ten times
+        run: scripts/ci/gotest.sh long-shuffle -shuffle=on -count=10 -timeout=60m ./...
+
+  # One status to require in branch protection. long-shuffle is deliberately not
+  # listed: it only exists on manual runs.
+  ci-ok:
+    name: CI result
+    if: always()
+    needs: [compat, enhanced, linux-binary]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every required job succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for result in $RESULTS; do
+            if [ "$result" != success ]; then
+              echo "a required job did not succeed: $result" >&2
+              exit 1
+            fi
+          done
