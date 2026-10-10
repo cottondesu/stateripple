@@ -42,7 +42,7 @@ A snapshot is one JSON file:
 | Exit | Meaning |
 |---|---|
 | 0 | Complete result (`status: complete`) |
-| 1 | Invalid input, usage, configuration, execution, or output error; no report |
+| 1 | Invalid input, usage, configuration, execution, or output error. Exit 1 does not guarantee the absence of output: a partial report may remain on stdout, or a completed `--out` file may remain after a post-publication cleanup failure |
 | 2 | Incomplete result (`status: incomplete`): generation limit reached without a confirmed fixed point, or adapter evidence incomplete |
 
 ## Propagation rule: RiskPropagationV1
