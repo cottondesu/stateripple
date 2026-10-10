@@ -9,8 +9,9 @@ This document describes the GitHub Actions workflow of StateRipple v0.1.0, what 
 | [38026796484](https://github.com/cottondesu/stateripple/actions/runs/38026796484) | `push` to `main` (initial commit 31cf6e7) | every job green in 91 s wall; `long-shuffle` skipped by design |
 | [38027059887](https://github.com/cottondesu/stateripple/actions/runs/38027059887) | `workflow_dispatch` with `long_shuffle` (same commit) | every job green in 2 min wall; `long-shuffle` passed in about 2 min |
 | [38027821273](https://github.com/cottondesu/stateripple/actions/runs/38027821273) | `pull_request` (PR #1, branch `docs/verify-pr-ci-trigger`, base `main`) | every job green in 80 s wall; `long-shuffle` skipped by design |
+| [38028313271](https://github.com/cottondesu/stateripple/actions/runs/38028313271) | `pull_request` (same PR, commit a88ff5b) | every job green in 93 s wall; `long-shuffle` skipped by design |
 
-The hosted runner was `ubuntu-24.04` (Linux 6.17.0-1022-azure x86_64) with Git 2.55.0. The PR-scoped concurrency cancellation — a newer run of the same pull request cancelling the previous one — has not been observed (each pull request had exactly one run) and remains listed under [Not verified yet](#not-verified-yet).
+The hosted runner was `ubuntu-24.04` (Linux 6.17.0-1022-azure x86_64) with Git 2.55.0. PR #1 has completed two successful CI runs (38027821273 and 38028313271). They executed sequentially — the first completed before the second began, without an overlapping in-progress run — so no run was ever cancelled by a newer one, and PR-scoped concurrency cancellation remains not verified (see [Not verified yet](#not-verified-yet)).
 
 CI is verification only. It publishes nothing: no release, tag, package, container image, artifact upload or write to the repository. A release is a separate, manual step.
 
@@ -107,7 +108,7 @@ Test results were 504 passes on macOS and 501 on Linux (the three differences ar
 
 The adapters package dominates (it starts many Git and Go processes). `-timeout=5m` per package had a wide margin in every local run above; if hosted runners prove slower, raise the timeout in the workflow rather than skipping tests.
 
-The first hosted runs (2026-10-10, run IDs in the status table above) were faster than every local row: the `push` run took 91 s wall (compat 37–44 s per Go version, `enhanced` 79 s, `linux-binary` 41 s, `ci-ok` 4 s), the manual run with the long shuffle 120 s wall (its `long-shuffle` job 116 s) and the `pull_request` run 80 s wall (compat 37–46 s, `enhanced` 70 s, `linux-binary` 24 s). The suite has no third-party module to download, so the offline policy costs nothing on the runner. Each compat job, including the build and the full suite, finished in under a minute, so the per-package `-timeout=5m` kept the same wide margin as locally.
+The first hosted runs (2026-10-10, run IDs in the status table above) were faster than every local row: the `push` run took 91 s wall (compat 37–44 s per Go version, `enhanced` 79 s, `linux-binary` 41 s, `ci-ok` 4 s), the manual run with the long shuffle 120 s wall (its `long-shuffle` job 116 s) and the two `pull_request` runs 80 s and 93 s wall (compat 37–46 s, `enhanced` 70–83 s, `linux-binary` 21–24 s). The suite has no third-party module to download, so the offline policy costs nothing on the runner. Each compat job, including the build and the full suite, finished in under a minute, so the per-package `-timeout=5m` kept the same wide margin as locally.
 
 ### Running the long shuffle later
 
@@ -160,13 +161,13 @@ All of the following are required; a green CI run alone is not a release decisio
 2. Done (2026-10-10): the `long_shuffle` manual run is green — [run 38027059887](https://github.com/cottondesu/stateripple/actions/runs/38027059887).
 3. Done (2026-10-10): the runner printed Git 2.55.0 on both runs and the gate passed.
 4. Done (2026-10-10): the hosted runs were faster than the local expectations and nothing was skipped; see [Expected time](#expected-time). VALIDATION.md still records only local measurements.
-5. Done (2026-10-10): a pull request run from a branch is green — [run 38027821273](https://github.com/cottondesu/stateripple/actions/runs/38027821273), event `pull_request`, PR #1 (`docs/verify-pr-ci-trigger` → `main`); every required job passed and `long-shuffle` skipped as designed. Concurrency cancellation was not exercised: each pull request had exactly one run.
+5. Done (2026-10-10): pull request runs from a branch are green — [run 38027821273](https://github.com/cottondesu/stateripple/actions/runs/38027821273) and [run 38028313271](https://github.com/cottondesu/stateripple/actions/runs/38028313271), both event `pull_request`, PR #1 (`docs/verify-pr-ci-trigger` → `main`); every required job passed and `long-shuffle` skipped as designed in both. Concurrency cancellation was not exercised: the two runs executed sequentially, so no in-progress run was superseded.
 6. Decide the platform statement for the release notes: Linux and macOS arm64 verified; Windows, other BSDs and Linux arm64 on hosted runners not run in CI.
 7. Release itself (tag, GitHub Release) is done by hand after the above and is not automated.
 
 ## Not verified yet
 
-- PR-scoped concurrency cancellation: the `pull_request` event path itself is verified (run 38027821273), but a newer run cancelling the previous run of the same pull request has not been observed — each pull request so far had exactly one run (runs on `main` are never cancelled by design).
+- PR-scoped concurrency cancellation: the `pull_request` event path itself is verified (runs 38027821273 and 38028313271 on PR #1), but a newer run cancelling an in-progress run of the same pull request has not been observed — the two runs executed sequentially, without an overlapping in-progress run (runs on `main` are never cancelled by design).
 - CPU count and speed of the hosted `ubuntu-24.04` runners: one runner's timings and its Git 2.55.0 are recorded above, but the fleet is not profiled.
 - macOS Intel, Windows, FreeBSD/OpenBSD/NetBSD, illumos execution.
 
