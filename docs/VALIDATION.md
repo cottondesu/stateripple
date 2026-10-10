@@ -4,7 +4,7 @@ Records below the first section were written while the project was named RiskLif
 
 ## Current record: GitHub Actions hosted runs (2026-10-10)
 
-The workflow `.github/workflows/ci.yml` has run four times on GitHub-hosted `ubuntu-24.04` runners (Linux 6.17.0-1022-azure x86_64; the version gate printed Git 2.55.0 in every job of every run). This closes the hosted items of the "Not verified" list in the CI-preparation record below; that record and its limits are unchanged history. No run published anything (`contents: read`, no upload step). Evidence:
+The workflow `.github/workflows/ci.yml` has run five times on GitHub-hosted `ubuntu-24.04` runners (Linux 6.17.0-1022-azure x86_64; the version gate printed Git 2.55.0 in every job of every run). This closes the hosted items of the "Not verified" list in the CI-preparation record below; that record and its limits are unchanged history. No run published anything (`contents: read`, no upload step). Evidence:
 
 | Run | Event | Commit | Result | Wall |
 |---|---|---|---|---|
@@ -12,13 +12,14 @@ The workflow `.github/workflows/ci.yml` has run four times on GitHub-hosted `ubu
 | [38027059887](https://github.com/cottondesu/stateripple/actions/runs/38027059887) | `workflow_dispatch` (`long_shuffle` on) | 31cf6e7 | every job green; long shuffle ×10 green | 2 min |
 | [38027821273](https://github.com/cottondesu/stateripple/actions/runs/38027821273) | `pull_request` (PR #1, `docs/verify-pr-ci-trigger` → `main`) | a8b4810 | every job green; `long-shuffle` skipped by design | 80 s |
 | [38028313271](https://github.com/cottondesu/stateripple/actions/runs/38028313271) | `pull_request` (same PR, next commit) | a88ff5b | every job green; `long-shuffle` skipped by design | 93 s |
+| [38029250275](https://github.com/cottondesu/stateripple/actions/runs/38029250275) | `push` to `main` (after PR #1 was squash-merged) | e5963e4 | every job green; `long-shuffle` skipped by design | 105 s |
 
 What the runs showed:
 
-- Go matrix (`compat` 1.23 / 1.26 / 1.27: gofmt, `go vet`, CLI build, full suite): success in all four runs, job times 37–46 s.
-- Enhanced validation (strict environment, `-race`, `-shuffle=on -count=2`, the five named groups): success in all four runs, job times 70–83 s.
-- `linux-binary` (static build; Git-free/offline acceptance and a real `analyze`, each inside an empty network namespace — so `sudo unshare --net` and `setpriv` work on the hosted runner): success in all four runs, job times 21–41 s.
-- `ci-ok`: success in all four runs.
+- Go matrix (`compat` 1.23 / 1.26 / 1.27: gofmt, `go vet`, CLI build, full suite): success in all five runs, job times 36–46 s.
+- Enhanced validation (strict environment, `-race`, `-shuffle=on -count=2`, the five named groups): success in all five runs, job times 70–93 s.
+- `linux-binary` (static build; Git-free/offline acceptance and a real `analyze`, each inside an empty network namespace — so `sudo unshare --net` and `setpriv` work on the hosted runner): success in all five runs, job times 21–41 s.
+- `ci-ok`: success in all five runs.
 - Long shuffle (`-shuffle=on -count=10`): green in run 38027059887 (job 116 s); skipped by its `if` condition on `push` and `pull_request`, as designed.
 - PR trigger: runs 38027821273 and 38028313271 both have event `pull_request`, head branch `docs/verify-pr-ci-trigger`, base `main`; every required job green in both, no unexpected skip or failure. The two runs executed sequentially — the first completed before the second began.
 

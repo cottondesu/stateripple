@@ -162,7 +162,7 @@ All of the following are required; a green CI run alone is not a release decisio
 3. Done (2026-10-10): the runner printed Git 2.55.0 on both runs and the gate passed.
 4. Done (2026-10-10): the hosted runs were faster than the local expectations and nothing was skipped; see [Expected time](#expected-time). VALIDATION.md still records only local measurements.
 5. Done (2026-10-10): pull request runs from a branch are green — [run 38027821273](https://github.com/cottondesu/stateripple/actions/runs/38027821273) and [run 38028313271](https://github.com/cottondesu/stateripple/actions/runs/38028313271), both event `pull_request`, PR #1 (`docs/verify-pr-ci-trigger` → `main`); every required job passed and `long-shuffle` skipped as designed in both. Concurrency cancellation was not exercised: the two runs executed sequentially, so no in-progress run was superseded.
-6. Decide the platform statement for the release notes: Linux and macOS arm64 verified; Windows, other BSDs and Linux arm64 on hosted runners not run in CI.
+6. Done (2026-10-10): the platform statement for the release notes is fixed — Linux amd64: execution-verified on GitHub Actions; Linux arm64: execution-verified in a local Docker environment; macOS arm64: execution-verified locally; Windows, macOS Intel, the BSDs and illumos: not execution-verified. Cross-compilation success is never presented as execution verification.
 7. Release itself (tag, GitHub Release) is done by hand after the above and is not automated.
 
 ## Not verified yet
