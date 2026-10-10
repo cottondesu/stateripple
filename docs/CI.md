@@ -2,7 +2,14 @@
 
 This document describes the GitHub Actions workflow of StateRipple v0.1.0, what it verifies and what it does not, and the gates that must pass before a first release.
 
-**Status.** The workflow and its helper scripts were written and checked locally (see [VALIDATION.md](VALIDATION.md)). **The workflow has not run on GitHub Actions yet.** Nothing below is a claim that a GitHub Actions run passed; the checks that only a real run can answer are listed under [Not verified yet](#not-verified-yet).
+**Status (2026-10-10).** The workflow and its helper scripts were written and checked locally (see [VALIDATION.md](VALIDATION.md)), and the workflow has since run twice on GitHub Actions, both green:
+
+| Run | Event | Result |
+|---|---|---|
+| [38026796484](https://github.com/cottondesu/stateripple/actions/runs/38026796484) | `push` to `main` (initial commit 31cf6e7) | every job green in 91 s wall; `long-shuffle` skipped by design |
+| [38027059887](https://github.com/cottondesu/stateripple/actions/runs/38027059887) | `workflow_dispatch` with `long_shuffle` (same commit) | every job green in 2 min wall; `long-shuffle` passed in about 2 min |
+
+The hosted runner was `ubuntu-24.04` (Linux 6.17.0-1022-azure x86_64) with Git 2.55.0. **The `pull_request` trigger has not run yet** — no pull request has been opened against `main` — so it and the PR-scoped concurrency cancellation remain listed under [Not verified yet](#not-verified-yet).
 
 CI is verification only. It publishes nothing: no release, tag, package, container image, artifact upload or write to the repository. A release is a separate, manual step.
 
@@ -99,6 +106,8 @@ Test results were 504 passes on macOS and 501 on Linux (the three differences ar
 
 The adapters package dominates (it starts many Git and Go processes). `-timeout=5m` per package had a wide margin in every local run above; if hosted runners prove slower, raise the timeout in the workflow rather than skipping tests.
 
+The first hosted runs (2026-10-10, run IDs in the status table above) were faster than every local row: the `push` run took 91 s wall (compat 37–44 s per Go version, `enhanced` 79 s, `linux-binary` 41 s, `ci-ok` 4 s) and the manual run with the long shuffle 120 s wall, its `long-shuffle` job 116 s. The suite has no third-party module to download, so the offline policy costs nothing on the runner. Each compat job, including the build and the full suite, finished in under a minute, so the per-package `-timeout=5m` kept the same wide margin as locally.
+
 ### Running the long shuffle later
 
 Actions tab, workflow `CI`, "Run workflow", tick `long_shuffle`. Locally:
@@ -107,7 +116,7 @@ Actions tab, workflow `CI`, "Run workflow", tick `long_shuffle`. Locally:
 GOTOOLCHAIN=local go test -shuffle=on -count=10 -timeout=60m ./...
 ```
 
-Earlier local runs took about 10 minutes for the adapters package at `-count=10` on Apple M1. Without an explicit `-timeout` Go stops a package after 10 minutes, so the timeout is always given.
+Earlier local runs took about 10 minutes for the adapters package at `-count=10` on Apple M1. Without an explicit `-timeout` Go stops a package after 10 minutes, so the timeout is always given. On the hosted runner the whole `long-shuffle` job passed in about 2 minutes (run 38027059887), far inside its 90-minute job timeout.
 
 ## Offline checks and their limits
 
@@ -146,20 +155,18 @@ CI executes the test suite on Linux (x86-64 hosted runners) only. Cross-compilat
 
 All of the following are required; a green CI run alone is not a release decision.
 
-1. First push succeeded and the `CI` workflow ran on `main`: every job in `compat` (1.23, 1.26, 1.27), `enhanced`, `linux-binary` and `ci-ok` is green, with the timing recorded in VALIDATION.md.
-2. The `long_shuffle` manual run is green (or its failure is understood and fixed).
-3. The Git version printed by the runner is 2.45 or later (the gate would have failed otherwise); record it.
-4. Any difference between the local expectations in [VALIDATION.md](VALIDATION.md) and the hosted run (timings, Git version, skips) is explained.
-5. A pull request run from a branch, to see the `pull_request` trigger and concurrency behave as described.
+1. Done (2026-10-10): the first push ran the `CI` workflow on `main` and every job in `compat` (1.23, 1.26, 1.27), `enhanced`, `linux-binary` and `ci-ok` is green — [run 38026796484](https://github.com/cottondesu/stateripple/actions/runs/38026796484). Timings are recorded under [Expected time](#expected-time); the VALIDATION.md entry is still to be added.
+2. Done (2026-10-10): the `long_shuffle` manual run is green — [run 38027059887](https://github.com/cottondesu/stateripple/actions/runs/38027059887).
+3. Done (2026-10-10): the runner printed Git 2.55.0 on both runs and the gate passed.
+4. Done (2026-10-10): the hosted runs were faster than the local expectations and nothing was skipped; see [Expected time](#expected-time). VALIDATION.md still records only local measurements.
+5. Open: a pull request run from a branch, to see the `pull_request` trigger and concurrency behave as described. No pull request has been opened yet.
 6. Decide the platform statement for the release notes: Linux and macOS arm64 verified; Windows, other BSDs and Linux arm64 on hosted runners not run in CI.
 7. Release itself (tag, GitHub Release) is done by hand after the above and is not automated.
 
 ## Not verified yet
 
-- Every GitHub Actions behavior: the workflow has not run, so its YAML is only checked structurally and by a local reproduction of its commands.
-- Git version, CPU count and speed of the hosted `ubuntu-24.04` runner, and whether `-timeout=5m` is enough there.
-- `sudo unshare --net` and `setpriv` on the hosted runner (the isolation step fails loudly if unavailable).
-- Linux x86-64 execution (local Linux runs were arm64 in a container).
+- The `pull_request` trigger and PR-scoped concurrency: no pull request has been opened against `main` yet, so neither the PR event path nor a newer run cancelling the previous run of the same PR has been observed (runs on `main` are never cancelled by design).
+- CPU count and speed of the hosted `ubuntu-24.04` runners: one runner's timings and its Git 2.55.0 are recorded above, but the fleet is not profiled.
 - macOS Intel, Windows, FreeBSD/OpenBSD/NetBSD, illumos execution.
 
 ## Known limits
