@@ -1,4 +1,4 @@
-# StateRipple v0.1.0（未リリース）
+# StateRipple v0.1.0
 
 [English](README.md)
 
